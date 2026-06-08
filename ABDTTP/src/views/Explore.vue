@@ -50,7 +50,7 @@
 <script setup lang="ts">
 import { onMounted, onBeforeUnmount, ref } from 'vue'
 import { useAuthStore } from '../stores/auth'
-import { supabase } from '../lib/supabase'
+import api from '../lib/api'
 import PhotoPost from '../components/PhotoPost.vue'
 import CreatePhotoPostForm from '../components/CreatePhotoPostForm.vue'
 
@@ -66,53 +66,8 @@ const fetchPosts = async () => {
   error.value = ''
 
   try {
-    // First get all posts
-    const { data: postsData, error: postsError } = await supabase
-      .from('photo_posts')
-      .select('*')
-      .order('created_at', { ascending: false })
-
-    if (postsError) throw postsError
-
-    if (!postsData || postsData.length === 0) {
-      posts.value = []
-      return
-    }
-
-    // Get like counts for all posts
-    const postIds = postsData.map(p => p.id)
-    const { data: likesData, error: likesError } = await supabase
-      .from('photo_post_likes')
-      .select('post_id')
-      .in('post_id', postIds)
-
-    if (likesError) throw likesError
-
-    // Get bookmark counts for all posts
-    const { data: bookmarksData, error: bookmarksError } = await supabase
-      .from('photo_post_bookmarks')
-      .select('post_id')
-      .in('post_id', postIds)
-
-    if (bookmarksError) throw bookmarksError
-
-    // Count likes and bookmarks per post
-    const likeCounts = likesData?.reduce((acc: any, like: any) => {
-      acc[like.post_id] = (acc[like.post_id] || 0) + 1
-      return acc
-    }, {}) || {}
-
-    const bookmarkCounts = bookmarksData?.reduce((acc: any, bookmark: any) => {
-      acc[bookmark.post_id] = (acc[bookmark.post_id] || 0) + 1
-      return acc
-    }, {}) || {}
-
-    // Combine posts with counts
-    posts.value = postsData.map((post: any) => ({
-      ...post,
-      like_count: likeCounts[post.id] || 0,
-      bookmark_count: bookmarkCounts[post.id] || 0,
-    }))
+    const res = await api.get('/photo-posts')
+    posts.value = res || []
   } catch (err: any) {
     error.value = err.message || 'Failed to load posts.'
   } finally {

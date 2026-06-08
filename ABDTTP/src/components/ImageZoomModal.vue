@@ -11,7 +11,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref } from 'vue'
+import { ref, onMounted, onBeforeUnmount } from 'vue'
 
 const props = defineProps<{
   isOpen: boolean
@@ -34,9 +34,17 @@ const handleKeydown = (e: KeyboardEvent) => {
   }
 }
 
-if (typeof window !== 'undefined') {
-  window.addEventListener('keydown', handleKeydown)
-}
+onMounted(() => {
+  if (typeof window !== 'undefined') {
+    window.addEventListener('keydown', handleKeydown)
+  }
+})
+
+onBeforeUnmount(() => {
+  if (typeof window !== 'undefined') {
+    window.removeEventListener('keydown', handleKeydown)
+  }
+})
 </script>
 
 <style scoped>

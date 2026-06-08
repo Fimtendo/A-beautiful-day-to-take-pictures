@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { ref } from 'vue'
-import { supabase } from '../lib/supabase'
+import api from '../lib/api'
 import { useAuthStore } from '../stores/auth'
 
 const authStore = useAuthStore()
@@ -14,31 +14,13 @@ const testLike = async () => {
   }
 
   try {
-    // Test insert
-    const { data, error: insertError } = await supabase
-      .from('photo_post_likes')
-      .insert([{ post_id: 1, user_id: authStore.user.id }])
-      .select()
+    // Test insert via API
+    await api.post('/photo-posts/1/likes')
+    result.value = 'Insert (like) successful'
 
-    if (insertError) {
-      error.value = `Insert error: ${insertError.message} (${insertError.code})`
-      return
-    }
-
-    result.value = `Insert successful: ${JSON.stringify(data)}`
-
-    // Test delete
-    const { error: deleteError } = await supabase
-      .from('photo_post_likes')
-      .delete()
-      .eq('post_id', 1)
-      .eq('user_id', authStore.user.id)
-
-    if (deleteError) {
-      error.value += ` | Delete error: ${deleteError.message} (${deleteError.code})`
-    } else {
-      result.value += ' | Delete successful'
-    }
+    // Test delete via API
+    await api.del('/photo-posts/1/likes')
+    result.value += ' | Delete successful'
   } catch (err: any) {
     error.value = `Exception: ${err.message}`
   }
@@ -46,18 +28,9 @@ const testLike = async () => {
 
 const testTables = async () => {
   try {
-    // Test if tables exist
-    const { data: likesData, error: likesError } = await supabase
-      .from('photo_post_likes')
-      .select('*')
-      .limit(1)
-
-    const { data: bookmarksData, error: bookmarksError } = await supabase
-      .from('photo_post_bookmarks')
-      .select('*')
-      .limit(1)
-
-    result.value = `Likes table: ${likesError ? 'ERROR: ' + likesError.message : 'OK'} | Bookmarks table: ${bookmarksError ? 'ERROR: ' + bookmarksError.message : 'OK'}`
+    // Use admin API to list tables
+    const tables = await api.get('/admin/tables')
+    result.value = JSON.stringify(tables)
   } catch (err: any) {
     error.value = `Exception: ${err.message}`
   }

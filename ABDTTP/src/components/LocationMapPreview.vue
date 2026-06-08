@@ -61,7 +61,9 @@ const updatePreviewPosition = () => {
 const initMap = async () => {
   await nextTick()
   const mapContainer = document.getElementById(mapId)
-  if (!mapContainer || mapInstance.value) return
+  const lat = Number(props.lat)
+  const lng = Number(props.lng)
+  if (!mapContainer || mapInstance.value || !Number.isFinite(lat) || !Number.isFinite(lng)) return
 
   mapInstance.value = L.map(mapId, {
     zoomControl: false,

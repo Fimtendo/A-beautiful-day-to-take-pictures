@@ -53,7 +53,7 @@
               @change="handleImageChange"
               accept="image/*"
             />
-            <p class="mt-2 text-xs text-[#6f6a54]">Max 5MB. Ondersteund: JPG, PNG, WebP</p>
+            <p class="mt-2 text-xs text-[#6f6a54]">Max 8MB. Ondersteund: JPG, PNG, WebP</p>
           </div>
 
           <!-- Image Preview -->
@@ -88,7 +88,8 @@
 
 <script setup lang="ts">
 import { ref } from 'vue'
-import { supabase } from '../lib/supabase'
+import api from '../lib/api'
+import { useAuthStore } from '../stores/auth'
 
 // State and helper logic for creating a new marker from the modal
 interface MarkerForm {
@@ -165,64 +166,38 @@ const submitMarker = async () => {
   error.value = ''
 
   try {
-    let imageUrl: string | null = null
+      // 1. Maak een nieuw FormData object aan (in plaats van een JSON payload)
+      const formData = new FormData()
 
-    // Upload image if selected
-    if (selectedFile.value) {
-      const { data: { session: currentSession } } = await supabase.auth.getSession()
-      if (!currentSession?.user) {
-        throw new Error('You must be signed in to upload marker images.')
+      // Helpers voor de coördinaten-opmaak van de popup
+      const safeLat = Number(props.lat)
+      const safeLng = Number(props.lng)
+      const formatCoordinate = (value: unknown) => {
+        const num = Number(value)
+        return Number.isFinite(num) ? num.toFixed(4) : 'Onbekend'
+      }
+      const popupText = `${form.value.name} - (${formatCoordinate(safeLat)}, ${formatCoordinate(safeLng)})`
+
+      // 2. Voeg alle tekstvelden en getallen toe aan de FormData
+      formData.append('name', form.value.name)
+      formData.append('description', form.value.description || '')
+      formData.append('lat', props.lat.toString())
+      formData.append('lng', props.lng.toString())
+      formData.append('type', form.value.type.toString())
+      formData.append('popup', popupText)
+
+      // 3. CRUCIAAL: Voeg het ECHTE geselecteerde bestand toe met de sleutel 'image'
+      // Dit matcht exact met de $request->hasFile('image') in je Laravel controller!
+      if (selectedFile.value) {
+        formData.append('image', selectedFile.value)
       }
 
-      const fileName = `${Date.now()}_${selectedFile.value.name}`
-      const { data: uploadData, error: uploadError } = await supabase.storage
-        .from('marker-images')
-        .upload(fileName, selectedFile.value, {
-          cacheControl: '3600',
-          contentType: selectedFile.value.type,
-          upsert: false,
-        })
+      // 4. Verstuur de FormData naar Laravel via je API-helper
+      const res = await api.post('/markers', formData)
+      
+      emit('markerCreated', res)
+      close()
 
-      if (uploadError) {
-        if (uploadError.message.includes('Bucket not found')) {
-          throw new Error('Storage bucket "marker-images" not found. Create it in Supabase Storage with Public access enabled.')
-        }
-
-        if (uploadError.message.includes('row-level security')) {
-          throw new Error('Storage upload blocked by RLS. Ensure the "marker-images" bucket exists, is public, and authenticated users may upload to it.')
-        }
-
-        throw uploadError
-      }
-
-      const publicUrlResult = supabase.storage
-        .from('marker-images')
-        .getPublicUrl(uploadData.path)
-
-      imageUrl = publicUrlResult.data.publicUrl
-    }
-
-    // Create marker
-    const { data, error: insertError } = await supabase
-      .from('markers')
-      .insert([
-        {
-          name: form.value.name,
-          description: form.value.description,
-          lat: props.lat,
-          lng: props.lng,
-          type: form.value.type,
-          popup: `${form.value.name} - (${props.lat.toFixed(4)}, ${props.lng.toFixed(4)})`,
-          image_url: imageUrl
-        }
-      ])
-      .select()
-      .single()
-
-    if (insertError) throw insertError
-
-    emit('markerCreated', data)
-    close()
   } catch (err: any) {
     error.value = err.message || 'Failed to create marker'
     console.error('Marker creation error:', err)
@@ -230,6 +205,7 @@ const submitMarker = async () => {
     loading.value = false
   }
 }
+
 
 const close = () => {
   form.value = { name: '', description: '', type: 1 }

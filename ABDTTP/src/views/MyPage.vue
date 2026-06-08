@@ -97,6 +97,13 @@
           <div v-else class="grid gap-6 md:grid-cols-2 xl:grid-cols-3">
             <div v-for="post in myPhotoPosts" :key="post.id">
               <PhotoPost :post="post" :isAuthenticated="true" @updated="fetchData" />
+                  <button 
+                    @click="deletePhotoPost(post)" 
+                    :disabled="loading"
+                    class="mt-4 w-full rounded-2xl bg-red-50 px-4 py-2 text-sm font-medium text-red-600 hover:bg-red-100 disabled:opacity-50 transition-colors"
+                  >
+                    {{ loading ? 'Verwijderen...' : 'Foto Verwijderen' }}
+                  </button>
             </div>
           </div>
         </section>
@@ -121,9 +128,9 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, ref, watch } from 'vue'
+import { computed, ref, watch } from 'vue'
 import { useAuthStore } from '../stores/auth'
-import { supabase } from '../lib/supabase'
+import api from '../lib/api'
 import PhotoPost from '../components/PhotoPost.vue'
 
 const authStore = useAuthStore()
@@ -140,7 +147,9 @@ const createdPhotoDates = computed(() => {
 
 const joinedPhotoDates = computed(() => {
   if (!authStore.user) return []
+  const now = new Date()
   return photoDates.value.filter((item) =>
+    new Date(item.end_time) > now &&
     Array.isArray(item.attendees) &&
     item.attendees.some((attendee: any) => attendee.id === authStore.user?.id)
   )
@@ -164,18 +173,8 @@ const fetchPhotoDates = async () => {
   error.value = ''
 
   try {
-    await removeExpiredPhotoDates()
-
-    const { data, error: fetchError } = await supabase
-      .from('photo_dates')
-      .select('*')
-      .order('start_time', { ascending: true })
-
-    if (fetchError) {
-      throw fetchError
-    }
-
-    photoDates.value = (data ?? []).filter((item: any) => new Date(item.end_time) > new Date())
+    const data = await api.get('/photo-dates')
+    photoDates.value = data ?? []
   } catch (err: any) {
     error.value = err.message || 'Failed to load PhotoDates.'
   } finally {
@@ -185,81 +184,19 @@ const fetchPhotoDates = async () => {
 
 const fetchPhotoPosts = async () => {
   try {
-    // First get all posts
-    const { data: postsData, error: postsError } = await supabase
-      .from('photo_posts')
-      .select('*')
-      .order('created_at', { ascending: false })
-
-    if (postsError) throw postsError
-
-    if (!postsData || postsData.length === 0) {
-      photoPosts.value = []
-      return
-    }
-
-    // Get like counts for all posts
-    const postIds = postsData.map(p => p.id)
-    const { data: likesData, error: likesError } = await supabase
-      .from('photo_post_likes')
-      .select('post_id')
-      .in('post_id', postIds)
-
-    if (likesError) throw likesError
-
-    // Get bookmark counts for all posts
-    const { data: bookmarksData, error: bookmarksError } = await supabase
-      .from('photo_post_bookmarks')
-      .select('post_id')
-      .in('post_id', postIds)
-
-    if (bookmarksError) throw bookmarksError
-
-    // Count likes and bookmarks per post
-    const likeCounts = likesData?.reduce((acc: any, like: any) => {
-      acc[like.post_id] = (acc[like.post_id] || 0) + 1
-      return acc
-    }, {}) || {}
-
-    const bookmarkCounts = bookmarksData?.reduce((acc: any, bookmark: any) => {
-      acc[bookmark.post_id] = (acc[bookmark.post_id] || 0) + 1
-      return acc
-    }, {}) || {}
-
-    // Combine posts with counts
-    photoPosts.value = postsData.map((post: any) => ({
-      ...post,
-      like_count: likeCounts[post.id] || 0,
-      bookmark_count: bookmarkCounts[post.id] || 0,
-    }))
+    const posts = await api.get('/photo-posts')
+    photoPosts.value = posts || []
+    // Track which posts the current user has bookmarked
+    bookmarkedPostIds.value = posts
+      .filter((post: any) => post.bookmarked_by_user)
+      .map((post: any) => post.id)
   } catch (err: any) {
     error.value = err.message || 'Failed to load photo posts.'
   }
 }
 
 const fetchBookmarks = async () => {
-  if (!authStore.user) {
-    bookmarkedPostIds.value = []
-    return
-  }
-
-  try {
-    const { data, error: fetchError } = await supabase
-      .from('photo_post_bookmarks')
-      .select('post_id')
-      .eq('user_id', authStore.user.id)
-
-    if (fetchError) throw fetchError
-
-    bookmarkedPostIds.value = (data ?? []).map((b: any) => b.post_id)
-  } catch (err: any) {
-    console.error('Failed to load bookmarks:', err)
-  }
-}
-
-const removeExpiredPhotoDates = async () => {
-  const now = new Date().toISOString()
-  await supabase.from('photo_dates').delete().lte('end_time', now)
+  // Bookmarks are now tracked from photo posts fetch
 }
 
 const deletePhotoDate = async (photoDate: any) => {
@@ -272,18 +209,34 @@ const deletePhotoDate = async (photoDate: any) => {
   error.value = ''
 
   try {
-    const { error: deleteError } = await supabase
-      .from('photo_dates')
-      .delete()
-      .eq('id', photoDate.id)
-
-    if (deleteError) {
-      throw deleteError
-    }
-
+    await api.del(`/photo-dates/${photoDate.id}`)
     await fetchData()
   } catch (err: any) {
     error.value = err.message || 'Failed to delete PhotoDate.'
+  } finally {
+    loading.value = false
+  }
+}
+
+const deletePhotoPost = async (post: any) => {
+  if (!authStore.user || post.created_by !== authStore.user.id) {
+    error.value = 'Alleen de maker kan deze FotoPost verwijderen.'
+    return
+  }
+  if (!confirm('Weet je zeker dat je deze fotopost wilt verwijderen? Dit kan niet ongedaan worden gemaakt.')) {
+    return
+  }
+
+  loading.value = true
+  error.value = ''
+
+  try {
+    // Aanroep naar je Laravel backend
+    await api.del(`/photo-posts/${post.id}`)
+    // Data opnieuw ophalen zodat de post uit de lijst verdwijnt
+    await fetchData()
+  } catch (err: any) {
+    error.value = err.message || 'Het verwijderen van de FotoPost is mislukt.'
   } finally {
     loading.value = false
   }
@@ -295,21 +248,11 @@ const leavePhotoDate = async (photoDate: any) => {
     return
   }
 
-  const attendees = Array.isArray(photoDate.attendees) ? photoDate.attendees.filter((attendee: any) => attendee.id !== authStore.user?.id) : []
-
   loading.value = true
   error.value = ''
 
   try {
-    const { error: updateError } = await supabase
-      .from('photo_dates')
-      .update({ attendees })
-      .eq('id', photoDate.id)
-
-    if (updateError) {
-      throw updateError
-    }
-
+    await api.del(`/photo-dates/${photoDate.id}/attendees`)
     await fetchData()
   } catch (err: any) {
     error.value = err.message || 'Failed to leave PhotoDate.'
@@ -329,8 +272,7 @@ watch(
     if (userId) {
       fetchData()
     }
-  }
+  },
+  { immediate: true }
 )
-
-onMounted(fetchData)
 </script>
