@@ -13,7 +13,7 @@
       <p class="text-sm text-[#6f6a54] flex items-center gap-2">
         <font-awesome-icon :icon="['fas', 'map-marker-alt']" class="text-[#6f6a54]" />
         <LocationMapPreview :lat="post.lat" :lng="post.lng">
-          {{ post.lat.toFixed(4) }}, {{ post.lng.toFixed(4) }}
+          {{ formatCoordinate(post.lat) }}, {{ formatCoordinate(post.lng) }}
         </LocationMapPreview>
       </p>
 
@@ -59,7 +59,7 @@
 
 <script setup lang="ts">
 import { ref, watch } from 'vue'
-import { supabase } from '../lib/supabase'
+import api from '../lib/api'
 import { useAuthStore } from '../stores/auth'
 import ImageZoomModal from './ImageZoomModal.vue'
 import LocationMapPreview from './LocationMapPreview.vue'
@@ -90,38 +90,17 @@ const bookmarkCount = ref(0)
 const hasLiked = ref(false)
 const hasBookmarked = ref(false)
 
-const checkUserInteractions = async () => {
-  if (!authStore.user || !props.post) return
-
-  try {
-    const [{ data: likes }, { data: bookmarks }] = await Promise.all([
-      supabase
-        .from('photo_post_likes')
-        .select('id')
-        .eq('post_id', props.post.id)
-        .eq('user_id', authStore.user.id)
-        .single(),
-      supabase
-        .from('photo_post_bookmarks')
-        .select('id')
-        .eq('post_id', props.post.id)
-        .eq('user_id', authStore.user.id)
-        .single(),
-    ])
-
-    hasLiked.value = !!likes
-    hasBookmarked.value = !!bookmarks
-  } catch {
-    // User hasn't liked or bookmarked yet
-  }
+const checkUserInteractions = () => {
+  hasLiked.value = !!props.post?.liked_by_user
+  hasBookmarked.value = !!props.post?.bookmarked_by_user
 }
 
 watch(
   () => props.post,
   (post) => {
     if (post) {
-      likeCount.value = post.like_count || 0
-      bookmarkCount.value = post.bookmark_count || 0
+      likeCount.value = post.likes_count || 0
+      bookmarkCount.value = post.bookmarks_count || 0
       checkUserInteractions()
     }
   },
@@ -130,31 +109,23 @@ watch(
 
 // Toggle the like state for the current post and refresh counts
 const toggleLike = async () => {
-  if (!authStore.user || !props.post) return
+  if (!props.isAuthenticated || !props.post) return
 
   loadingLike.value = true
   error.value = ''
 
   try {
+    let updatedPost: any
     if (hasLiked.value) {
-      const { error: deleteError } = await supabase
-        .from('photo_post_likes')
-        .delete()
-        .eq('post_id', props.post.id)
-        .eq('user_id', authStore.user.id)
-
-      if (deleteError) throw deleteError
-      likeCount.value = Math.max(0, likeCount.value - 1)
+      updatedPost = await api.del(`/photo-posts/${props.post.id}/likes`)
     } else {
-      const { error: insertError } = await supabase
-        .from('photo_post_likes')
-        .insert([{ post_id: props.post.id, user_id: authStore.user.id }])
-
-      if (insertError) throw insertError
-      likeCount.value += 1
+      updatedPost = await api.post(`/photo-posts/${props.post.id}/likes`)
     }
 
-    hasLiked.value = !hasLiked.value
+    if (updatedPost) {
+      likeCount.value = updatedPost.likes_count || 0
+      hasLiked.value = updatedPost.liked_by_user || false
+    }
     emit('updated')
   } catch (err: any) {
     error.value = err.message || 'Failed to like post.'
@@ -164,37 +135,34 @@ const toggleLike = async () => {
 }
 
 const toggleBookmark = async () => {
-  if (!authStore.user || !props.post) return
+  if (!props.isAuthenticated || !props.post) return
 
   loadingBookmark.value = true
   error.value = ''
 
   try {
+    let updatedPost: any
     if (hasBookmarked.value) {
-      const { error: deleteError } = await supabase
-        .from('photo_post_bookmarks')
-        .delete()
-        .eq('post_id', props.post.id)
-        .eq('user_id', authStore.user.id)
-
-      if (deleteError) throw deleteError
-      bookmarkCount.value = Math.max(0, bookmarkCount.value - 1)
+      updatedPost = await api.del(`/photo-posts/${props.post.id}/bookmarks`)
     } else {
-      const { error: insertError } = await supabase
-        .from('photo_post_bookmarks')
-        .insert([{ post_id: props.post.id, user_id: authStore.user.id }])
-
-      if (insertError) throw insertError
-      bookmarkCount.value += 1
+      updatedPost = await api.post(`/photo-posts/${props.post.id}/bookmarks`)
     }
 
-    hasBookmarked.value = !hasBookmarked.value
+    if (updatedPost) {
+      bookmarkCount.value = updatedPost.bookmarks_count || 0
+      hasBookmarked.value = updatedPost.bookmarked_by_user || false
+    }
     emit('updated')
   } catch (err: any) {
     error.value = err.message || 'Failed to bookmark post.'
   } finally {
     loadingBookmark.value = false
   }
+}
+
+const formatCoordinate = (value: unknown) => {
+  const num = Number(value)
+  return Number.isFinite(num) ? num.toFixed(4) : 'Onbekend'
 }
 
 const formatDate = (value: string) => {

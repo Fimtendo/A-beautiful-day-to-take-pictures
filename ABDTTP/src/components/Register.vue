@@ -49,7 +49,18 @@
                   required
                 />
               </div>
-              <button type="submit" class="btn btn-primary" :disabled="loading">
+               <div class="mb-3">
+                 <label for="role" class="form-label">Rol (Debug)</label>
+                 <select
+                   class="form-control"
+                   id="role"
+                   v-model="role"
+                 >
+                   <option value="user">Gebruiker</option>
+                   <option value="admin">Admin</option>
+                 </select>
+               </div>
+               <button type="submit" class="btn btn-primary" :disabled="loading">
                 {{ loading ? 'Registreren...' : 'Registreren' }}
               </button>
             </form>
@@ -81,6 +92,7 @@ const password = ref('')
 const confirmPassword = ref('')
 const loading = ref(false)
 const error = ref('')
+const role = ref('user')
 
 const handleRegister = async () => {
   if (password.value !== confirmPassword.value) {
@@ -91,10 +103,14 @@ const handleRegister = async () => {
   loading.value = true
   error.value = ''
   try {
-    await authStore.signUp(email.value, password.value, username.value)
+    await authStore.signUp(username.value, email.value, password.value, confirmPassword.value, role.value)
     router.push('/login') // Redirect to login since no email verification
   } catch (err: any) {
-    error.value = err.message
+    if (err?.errors) {
+      error.value = Object.values(err.errors).flat().join(' ')
+    } else {
+      error.value = err?.message || 'Registration failed.'
+    }
   } finally {
     loading.value = false
   }

@@ -83,7 +83,7 @@
 
 <script setup lang="ts">
 import { ref, watch } from 'vue'
-import { supabase } from '../lib/supabase'
+import api from '../lib/api'
 import { useAuthStore } from '../stores/auth'
 
 // Modal for creating a new FotoDatum linked to a selected marker
@@ -131,13 +131,13 @@ const close = () => {
 }
 
 const submitForm = async () => {
-  if (!props.marker) {
-    error.value = 'No marker selected.'
+  if (!props.marker || !props.marker.id) {
+    error.value = 'No valid marker selected.'
     return
   }
 
-  const { data: { session } } = await supabase.auth.getSession()
-  if (!session?.user) {
+  const authStore = useAuthStore()
+  if (!authStore.user) {
     error.value = 'Please log in first.'
     return
   }
@@ -151,8 +151,8 @@ const submitForm = async () => {
   error.value = ''
 
   const creator = {
-    id: session.user.id,
-    username: session.user.user_metadata?.username || session.user.email || 'Unknown',
+    id: authStore.user.id,
+    username: authStore.user.username || authStore.user.email || 'Unknown',
   }
 
   try {
@@ -166,23 +166,20 @@ const submitForm = async () => {
       marker_name: props.marker.name,
       lat: props.marker.lat,
       lng: props.marker.lng,
-      created_by: session.user.id,
-      created_by_username: creator.username,
       attendees: [creator],
     }
 
-    const { error: insertError } = await supabase
-      .from('photo_dates')
-      .insert([payload])
-
-    if (insertError) {
-      throw insertError
-    }
+    await api.post('/photo-dates', payload)
 
     emit('saved')
     close()
   } catch (err: any) {
-    error.value = err.message || 'Failed to save photo date.'
+    if (err?.errors) {
+      const messages = Object.values(err.errors).flat().join(' ')
+      error.value = messages || err.message || 'Failed to save photo date.'
+    } else {
+      error.value = err?.data?.message || err?.message || 'Failed to save photo date.'
+    }
   } finally {
     loading.value = false
   }

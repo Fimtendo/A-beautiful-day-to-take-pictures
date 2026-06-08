@@ -88,7 +88,7 @@ import { onMounted, ref } from 'vue'
 import { useMapMarkers } from '../composables/useMapMarkers'
 import { useWeather } from '../composables/useWeather'
 import { useAuthStore } from '../stores/auth'
-import { supabase } from '../lib/supabase'
+import api from '../lib/api'
 
 // Map view includes interactive Leaflet map, marker sidebar, weather panel, and photo date creation
 import MarkerCreationForm from '../components/MarkerCreationForm.vue'
@@ -136,23 +136,37 @@ const clearSelectedMarker = () => {
 const applyFilters = () => {
   mapMarkers.clearMarkers()
   allMarkers.value.forEach((m: any) => {
-    const shouldShow = 
-      (m.type === 1 && filters.value.green) ||
-      (m.type === 2 && filters.value.orange) ||
-      (m.type === 3 && filters.value.red)
-    
-    if (shouldShow) {
-      const popupContent = `<div class="marker-popup">
+    const lat = Number(m.lat)
+    const lng = Number(m.lng)
+    const type = Number(m.type) || 1
+
+    if (!Number.isFinite(lat) || !Number.isFinite(lng)) {
+      console.warn('Skipping marker with invalid coordinates', m)
+      return
+    }
+
+    const shouldShow =
+      (type === 1 && filters.value.green) ||
+      (type === 2 && filters.value.orange) ||
+      (type === 3 && filters.value.red)
+
+    if (!shouldShow) {
+      return
+    }
+
+    const latText = Number.isFinite(lat) ? lat.toFixed(4) : 'Onbekend'
+    const lngText = Number.isFinite(lng) ? lng.toFixed(4) : 'Onbekend'
+
+    const popupContent = `<div class="marker-popup">
         <h6 style="margin: 0 0 8px 0">${m.name || 'Marker'}</h6>
         ${m.description ? `<p style="margin: 0 0 8px 0; font-size: 14px">${m.description}</p>` : ''}
         ${m.image_url ? `<img src="${m.image_url}" alt="Marker" style="width: 100%; height: auto; max-height: 200px; border-radius: 4px; margin-bottom: 8px">` : ''}
-        <small style="color: #666">Lat: ${m.lat.toFixed(4)}, Lng: ${m.lng.toFixed(4)}</small>
+        <small style="color: #666">Lat: ${latText}, Lng: ${lngText}</small>
       </div>`
-      const marker = mapMarkers.addMarker(m.lat, m.lng, popupContent, m.type, m.id)
-      if (marker) {
-        marker.bindPopup(popupContent, { maxWidth: 300 })
-        attachClickToMarker(marker, m)
-      }
+    const marker = mapMarkers.addMarker(lat, lng, popupContent, type, m.id)
+    if (marker) {
+      marker.bindPopup(popupContent, { maxWidth: 300 })
+      attachClickToMarker(marker, m)
     }
   })
 }
@@ -219,6 +233,7 @@ const getRandomRemoteImage = (): string => {
 }
 
 const handleImageError = () => {
+  // Valt terug op je eigen lokale placeholder arrays als het internet faalt
   selectedMarkerImageUrl.value = getRandomPlaceholderImage()
 }
 
@@ -239,10 +254,12 @@ const selectMarker = async (markerData: any) => {
   selectedMarker.value = markerData
   showMarkerButtons.value = false
 
-  if (markerData.image_url) {
-    selectedMarkerImageUrl.value = markerData.image_url
+  // FIX: Gebruik ALTIJD de display_image van Laravel (dit is je eigen upload ÓF de eend)
+  // Mocht die onverhoopt leeg zijn, dan vallen we direct terug op de lokale placeholder array
+  if (markerData.display_image) {
+    selectedMarkerImageUrl.value = markerData.display_image
   } else {
-    selectedMarkerImageUrl.value = getRandomRemoteImage()
+    selectedMarkerImageUrl.value = getRandomPlaceholderImage()
   }
 
   await fetchWeatherData()
@@ -255,17 +272,13 @@ const attachClickToMarker = (marker: L.Marker, markerData: any) => {
 }
 
 const loadMarkers = async () => {
-  const { data, error } = await supabase.from('markers').select('*')
-  if (error) {
-    console.error('Failed to load markers', error)
-    return
+  try {
+    const data = await api.get('/markers')
+    allMarkers.value = Array.isArray(data) ? data : data?.data ?? []
+    applyFilters()
+  } catch (err) {
+    console.error('Failed to load markers', err)
   }
-  
-  // Store all markers for filtering
-  allMarkers.value = data || []
-  
-  // Apply initial filter
-  applyFilters()
 }
 
 onMounted(async () => {
@@ -334,20 +347,15 @@ const fetchWeatherData = async () => {
 const deleteSelectedMarker = async () => {
   if (selectedMarkerId.value == null) return
 
-  const { error } = await supabase
-    .from('markers')
-    .delete()
-    .eq('id', selectedMarkerId.value)
-
-  if (error) {
-    console.error('Failed to delete marker', error)
-    return
+  try {
+    await api.del(`/markers/${selectedMarkerId.value}`)
+    mapMarkers.removeMarker(selectedMarkerId.value)
+    selectedMarkerId.value = null
+    selectedMarkerLatLng.value = null
+    selectedMarker.value = null
+  } catch (err) {
+    console.error('Failed to delete marker', err)
   }
-
-  mapMarkers.removeMarker(selectedMarkerId.value)
-  selectedMarkerId.value = null
-  selectedMarkerLatLng.value = null
-  selectedMarker.value = null
 }
 </script>
 

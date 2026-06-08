@@ -16,7 +16,7 @@
       <div>
         <h5 class="text-xl font-semibold text-[#3f3a2f]">{{ marker.name || 'Marker' }}</h5>
         <p v-if="marker.description" class="text-sm leading-6 text-[#4f513f]">{{ marker.description }}</p>
-        <p class="text-sm text-[#6f6a54]">Lat: {{ marker.lat.toFixed(4) }}, Lng: {{ marker.lng.toFixed(4) }}</p>
+        <p class="text-sm text-[#6f6a54]">Lat: {{ formatCoordinate(marker.lat) }}, Lng: {{ formatCoordinate(marker.lng) }}</p>
       </div>
       <div class="flex flex-wrap gap-3">
         <button
@@ -47,6 +47,11 @@ import { ref } from 'vue'
 import ImageZoomModal from './ImageZoomModal.vue'
 
 const zoomOpen = ref(false)
+
+const formatCoordinate = (value: unknown) => {
+  const num = Number(value)
+  return Number.isFinite(num) ? num.toFixed(4) : 'Onbekend'
+}
 
 // Open the image preview modal for this marker
 const openZoom = () => {

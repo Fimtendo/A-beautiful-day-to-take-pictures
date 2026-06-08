@@ -1,0 +1,70 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Local DB Browser</title>
+  <style>body{font-family:Inter,system-ui,Segoe UI,Roboto,Helvetica,Arial,sans-serif;margin:0;padding:1rem;background:#f7f7f8}button{padding:.4rem .6rem;border-radius:6px;border:1px solid #ccc;background:#fff}table{border-collapse:collapse;width:100%}th,td{border:1px solid #e6e6e6;padding:.4rem;text-align:left}</style>
+</head>
+<body>
+  <h1>Local DB Browser</h1>
+  <p>Lists tables and sample rows from the active DB connection.</p>
+  <div>
+    <button id="refresh">Refresh</button>
+    <select id="tables" style="min-width:240px;margin-left:8px"></select>
+    <input id="limit" type="number" value="50" style="width:80px;margin-left:8px" />
+  </div>
+  <div id="info" style="margin-top:1rem"></div>
+  <div id="rows" style="margin-top:1rem"></div>
+
+  <script>
+    const API = '/api/admin'
+    const tablesEl = document.getElementById('tables')
+    const rowsEl = document.getElementById('rows')
+    const infoEl = document.getElementById('info')
+    const limitEl = document.getElementById('limit')
+
+    async function loadTables(){
+      infoEl.textContent = 'Loading...'
+      try{
+        const res = await fetch(API + '/tables')
+        const data = await res.json()
+        tablesEl.innerHTML = ''
+        data.forEach(t => {
+          const o = document.createElement('option')
+          o.value = t.table
+          o.textContent = `${t.table} (${t.count !== null ? t.count : 'n/a'})`
+          tablesEl.appendChild(o)
+        })
+        infoEl.textContent = ''
+        if (data.length) loadRows()
+      }catch(e){infoEl.textContent='Failed to load tables: '+e}
+    }
+
+    async function loadRows(){
+      const name = tablesEl.value
+      const limit = parseInt(limitEl.value || '50', 10)
+      if(!name) return
+      infoEl.textContent = 'Loading rows...'
+      try{
+        const res = await fetch(API + '/table/' + encodeURIComponent(name) + '?limit=' + limit)
+        const data = await res.json()
+        if (data.error) { rowsEl.innerHTML = '<pre>'+JSON.stringify(data,null,2)+'</pre>'; infoEl.textContent=''; return }
+        if (!data.length) { rowsEl.innerHTML = '<em>No rows</em>'; infoEl.textContent=''; return }
+        const keys = Object.keys(data[0])
+        let html = '<table><thead><tr>' + keys.map(k=>'<th>'+k+'</th>').join('') + '</tr></thead><tbody>'
+        data.forEach(r=>{ html += '<tr>' + keys.map(k=>'<td>'+String(r[k]===null?'':r[k]) + '</td>').join('') + '</tr>' })
+        html += '</tbody></table>'
+        rowsEl.innerHTML = html
+      }catch(e){ rowsEl.innerHTML = '<pre>'+e+'</pre>' }
+      infoEl.textContent = ''
+    }
+
+    document.getElementById('refresh').addEventListener('click', loadTables)
+    tablesEl.addEventListener('change', loadRows)
+    limitEl.addEventListener('change', loadRows)
+
+    loadTables()
+  </script>
+</body>
+</html>

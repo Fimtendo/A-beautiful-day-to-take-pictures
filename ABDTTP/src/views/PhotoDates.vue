@@ -36,7 +36,7 @@
               <div>
                 <strong>Locatie:</strong>
                 <LocationMapPreview :lat="photoDate.lat" :lng="photoDate.lng">
-                  {{ photoDate.lat.toFixed(4) }}, {{ photoDate.lng.toFixed(4) }}
+                  {{ formatCoordinate(photoDate.lat) }}, {{ formatCoordinate(photoDate.lng) }}
                 </LocationMapPreview>
               </div>
               <div><strong>deelnemers:</strong> {{ attendeesCount(photoDate) }} / {{ photoDate.capacity }}</div>
@@ -61,7 +61,7 @@
 import { onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { useAuthStore } from '../stores/auth'
-import { supabase } from '../lib/supabase'
+import api from '../lib/api'
 import LocationMapPreview from '../components/LocationMapPreview.vue'
 
 const router = useRouter()
@@ -75,20 +75,8 @@ const fetchPhotoDates = async () => {
   error.value = ''
 
   try {
-    // First remove expired
-    const now = new Date().toISOString()
-    await supabase.from('photo_dates').delete().lte('end_time', now)
-
     // Fetch all photo dates
-    const { data, error: fetchError } = await supabase
-      .from('photo_dates')
-      .select('*')
-      .order('start_time', { ascending: true })
-
-    if (fetchError) {
-      throw fetchError
-    }
-
+    const data = await api.get('/photo-dates')
     // Only keep upcoming photo dates
     photoDates.value = (data ?? []).filter((item: any) => {
       const endTime = new Date(item.end_time)
@@ -97,42 +85,6 @@ const fetchPhotoDates = async () => {
   } catch (err: any) {
     console.error('Error fetching photo dates:', err)
     error.value = err.message || 'Failed to load PhotoDates.'
-  } finally {
-    loading.value = false
-  }
-}
-
-const removeExpiredPhotoDates = async () => {
-  const now = new Date().toISOString()
-  await supabase.from('photo_dates').delete().lte('end_time', now)
-}
-
-const isCreator = (photoDate: any) => {
-  return authStore.user?.id && photoDate.created_by === authStore.user.id
-}
-
-const deletePhotoDate = async (photoDate: any) => {
-  if (!authStore.user || !isCreator(photoDate)) {
-    error.value = 'Only the creator can delete this PhotoDate.'
-    return
-  }
-
-  loading.value = true
-  error.value = ''
-
-  try {
-    const { error: deleteError } = await supabase
-      .from('photo_dates')
-      .delete()
-      .eq('id', photoDate.id)
-
-    if (deleteError) {
-      throw deleteError
-    }
-
-    await fetchPhotoDates()
-  } catch (err: any) {
-    error.value = err.message || 'Failed to delete PhotoDate.'
   } finally {
     loading.value = false
   }
@@ -156,19 +108,44 @@ const isFull = (photoDate: any) => {
   return attendeesCount(photoDate) >= photoDate.capacity
 }
 
+const formatCoordinate = (value: unknown) => {
+  const num = Number(value)
+  return Number.isFinite(num) ? num.toFixed(4) : 'Onbekend'
+}
+
 const canJoin = (photoDate: any) => {
   if (!authStore.user) return true
   if (hasJoined(photoDate)) return false
   if (isFull(photoDate)) return false
-  return new Date(photoDate.start_time) > new Date()
+  const now = new Date()
+  const startTime = new Date(photoDate.start_time)
+  const endTime = new Date(photoDate.end_time)
+  // Conditie 1: De photodate moet nog beginnen (in de toekomst)
+  const isFuture = startTime > now
+  // Conditie 2: De photodate is nu bezig (starttijd is geweest, maar eindtijd nog niet)
+  const isInProgress = startTime <= now && endTime > now
+  // Je mag deelnemen als het in de toekomst is OF als het nu bezig is
+  return isFuture || isInProgress
 }
+
 
 const joinButtonText = (photoDate: any) => {
   if (!authStore.user) return 'Inloggen om deel te nemen'
   if (hasJoined(photoDate)) return 'Je doet al mee'
   if (isFull(photoDate)) return 'Vol'
+
+  const now = new Date()
+  const startTime = new Date(photoDate.start_time)
+  const endTime = new Date(photoDate.end_time)
+
+  // Als de activiteit al bezig is, toon een aangepaste tekst
+  if (startTime <= now && endTime > now) {
+    return 'Nu instappen / Deelnemen'
+  }
+
   return 'Deelnemen aan FotoDatum'
 }
+
 
 const joinPhotoDate = async (photoDate: any) => {
   if (!authStore.user) {
@@ -179,21 +156,7 @@ const joinPhotoDate = async (photoDate: any) => {
   if (hasJoined(photoDate) || isFull(photoDate)) return
 
   try {
-    const attendees = Array.isArray(photoDate.attendees) ? [...photoDate.attendees] : []
-    attendees.push({
-      id: authStore.user.id,
-      username: authStore.user.user_metadata?.username || authStore.user.email,
-    })
-
-    const { error: updateError } = await supabase
-      .from('photo_dates')
-      .update({ attendees })
-      .eq('id', photoDate.id)
-
-    if (updateError) {
-      throw updateError
-    }
-
+    await api.post(`/photo-dates/${photoDate.id}/attendees`)
     await fetchPhotoDates()
   } catch (err: any) {
     error.value = err.message || 'Failed to join PhotoDate.'
@@ -202,3 +165,5 @@ const joinPhotoDate = async (photoDate: any) => {
 
 onMounted(fetchPhotoDates)
 </script>
+<!-- 
+hello there! im making a web application for posting photos and creating so called "photodates". the frontend is built in Vue, and the backend is in laravel. -->

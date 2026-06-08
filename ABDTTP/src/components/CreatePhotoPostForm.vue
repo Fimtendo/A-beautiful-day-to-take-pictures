@@ -32,17 +32,20 @@
             <textarea id="caption" class="form-input min-h-30" v-model="caption" rows="3" placeholder="Beschrijf deze mooie plek..."></textarea>
           </div>
 
-          <!-- Mini Map for Marker Selection -->
           <div class="form-group">
-            <label class="form-label">Locatie Selecteren</label>
-            <div id="mini-map" class="rounded-3xl border border-[#d8c2a0] bg-[#f3ece0]" style="width: 100%; height: 300px;"></div>
-            <div v-if="selectedMarker" class="info-box mt-3 flex items-center gap-2">
-              <font-awesome-icon :icon="['fas', 'map-marker-alt']" class="text-[#6f6a54]" />
-              <span>Geselecteerd: <strong>{{ selectedMarker.name }}</strong></span>
-            </div>
-            <div v-if="!selectedMarker" class="warning-box mt-3">
-              Klik op een marker op de kaart om een locatie te selecteren.
-            </div>
+            <label for="markerSelect" class="form-label">Kies een marker</label>
+            <select id="markerSelect" class="form-input" v-model.number="selectedMarkerId" required>
+              <option :value="null" disabled>-- Kies een locatie --</option>
+              <option v-for="marker in markers" :key="marker.id" :value="marker.id">
+                {{ marker.name || 'Marker' }} ({{ formatCoordinate(marker.lat) }}, {{ formatCoordinate(marker.lng) }})
+              </option>
+            </select>
+          </div>
+
+          <div v-if="selectedMarker" class="info-box">
+            <p class="text-sm font-semibold">Geselecteerde locatie</p>
+            <p>{{ selectedMarker.name || 'Marker' }}</p>
+            <p class="text-sm text-[#6f6a54]">{{ formatCoordinate(selectedMarker.lat) }}, {{ formatCoordinate(selectedMarker.lng) }}</p>
           </div>
 
           <div v-if="error" class="error-box">{{ error }}</div>
@@ -60,13 +63,9 @@
 </template>
 
 <script setup lang="ts">
-import { ref, watch, onBeforeUnmount } from 'vue'
-import { supabase } from '../lib/supabase'
+import { computed, ref, watch } from 'vue'
+import api from '../lib/api'
 import { useAuthStore } from '../stores/auth'
-import { useMapMarkers } from '../composables/useMapMarkers'
-import L from 'leaflet'
-
-// Image upload modal and mini-map selection for new photo posts
 
 const props = defineProps<{
   isOpen: boolean
@@ -78,33 +77,33 @@ const emit = defineEmits<{
 }>()
 
 const authStore = useAuthStore()
-const mapMarkers = useMapMarkers()
 const imageFile = ref<File | null>(null)
 const imagePreview = ref('')
 const caption = ref('')
-const selectedMarker = ref<any | null>(null)
+const selectedMarkerId = ref<number | null>(null)
 const markers = ref<any[]>([])
 const error = ref('')
 const loading = ref(false)
-let miniMap: L.Map | null = null
-const markerLayers = ref<L.Marker[]>([])
 
-// Rebuild the mini map when the modal is opened.
+const selectedMarker = computed(() => {
+  return markers.value.find((marker) => marker.id === selectedMarkerId.value) ?? null
+})
+
+const formatCoordinate = (value: unknown) => {
+  const num = Number(value)
+  return Number.isFinite(num) ? num.toFixed(4) : 'Onbekend'
+}
+
 watch(
   () => props.isOpen,
-  (open) => {
+  async (open) => {
     if (open) {
-      setTimeout(initMiniMap, 100)
+      await loadMarkers()
+    } else {
+      resetForm()
     }
   }
 )
-
-onBeforeUnmount(() => {
-  if (miniMap) {
-    miniMap.remove()
-    miniMap = null
-  }
-})
 
 const handleImageSelect = (event: Event) => {
   const input = event.target as HTMLInputElement
@@ -120,58 +119,28 @@ const handleImageSelect = (event: Event) => {
   }
 }
 
-// Initialize the marker selection map with a small fallback viewport.
-// Initialize the mini map used for selecting a photo post marker
-const initMiniMap = async () => {
-  const mapContainer = document.getElementById('mini-map')
-  if (!mapContainer || miniMap) return
-
-  miniMap = L.map('mini-map').setView([53, 6], 13)
-  L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
-    maxZoom: 19,
-    attribution: '&copy; <a href="http://www.openstreetmap.org/copyright">OpenStreetMap</a>',
-  }).addTo(miniMap)
-
-  await loadMarkersOnMap()
+const loadMarkers = async () => {
+  try {
+    const data = await api.get('/markers')
+    markers.value = Array.isArray(data) ? data : data?.data ?? []
+    selectedMarkerId.value = markers.value.length > 0 ? markers.value[0].id : null
+  } catch (err: any) {
+    error.value = err.message || 'Kon geen markers laden.'
+  }
 }
 
-const loadMarkersOnMap = async () => {
-  if (!miniMap) return
-
-  const { data, error: fetchError } = await supabase.from('markers').select('*')
-
-  if (fetchError) {
-    error.value = 'Failed to load markers.'
-    return
-  }
-
-  markerLayers.value.forEach((marker) => miniMap?.removeLayer(marker as any))
-  markerLayers.value = []
-
-  data?.forEach((m: any) => {
-    const options: L.MarkerOptions = {}
-    if (m.type) {
-      options.icon = mapMarkers.getIconByType(m.type)
-    }
-    const marker = L.marker([m.lat, m.lng], options).addTo(miniMap!)
-    marker.on('click', () => {
-      selectedMarker.value = m
-    })
-    markerLayers.value.push(marker)
-  })
+const resetForm = () => {
+  imageFile.value = null
+  imagePreview.value = ''
+  caption.value = ''
+  selectedMarkerId.value = null
+  error.value = ''
+  loading.value = false
 }
 
 const close = () => {
   emit('close')
-  imageFile.value = null
-  imagePreview.value = ''
-  caption.value = ''
-  selectedMarker.value = null
-  error.value = ''
-  if (miniMap) {
-    miniMap.remove()
-    miniMap = null
-  }
+  resetForm()
 }
 
 const submitForm = async () => {
@@ -184,36 +153,18 @@ const submitForm = async () => {
   error.value = ''
 
   try {
-    // Upload image to Supabase storage
-    const filename = `${authStore.user.id}-${Date.now()}-${imageFile.value.name}`
-    const { error: uploadError } = await supabase.storage
-      .from('photo_posts')
-      .upload(filename, imageFile.value)
+    const imageUrl = imagePreview.value || ''
 
-    if (uploadError) throw uploadError
+    const payload = {
+      marker_id: Number(selectedMarker.value.id),
+      marker_name: String(selectedMarker.value.name || ''),
+      lat: Number(selectedMarker.value.lat),
+      lng: Number(selectedMarker.value.lng),
+      image_url: imageUrl,
+      caption: caption.value,
+    }
 
-    // Get public URL
-    const { data: publicUrlData } = supabase.storage
-      .from('photo_posts')
-      .getPublicUrl(filename)
-
-    const imageUrl = publicUrlData.publicUrl
-
-    // Create photo post record
-    const { error: insertError } = await supabase.from('photo_posts').insert([
-      {
-        created_by: authStore.user.id,
-        created_by_username: authStore.user.user_metadata?.username || authStore.user.email,
-        marker_id: selectedMarker.value.id,
-        marker_name: selectedMarker.value.name,
-        lat: selectedMarker.value.lat,
-        lng: selectedMarker.value.lng,
-        image_url: imageUrl,
-        caption: caption.value,
-      },
-    ])
-
-    if (insertError) throw insertError
+    await api.post('/photo-posts', payload)
 
     emit('saved')
     close()

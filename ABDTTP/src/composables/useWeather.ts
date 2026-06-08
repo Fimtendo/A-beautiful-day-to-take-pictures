@@ -74,7 +74,6 @@ const degreesToDirection = (degrees: number): string => {
   return directions[index] ?? 'N'
 }
 
-// Composable for loading weather data and managing forecast state
 export const useWeather = () => {
   const loading = ref(false)
   const error = ref<string | null>(null)
@@ -84,35 +83,34 @@ export const useWeather = () => {
     loading.value = true
     error.value = null
     try {
-      const url = `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lng}&timezone=auto&current_weather=true&forecast_days=4&daily=temperature_2m_max,temperature_2m_min,weathercode,precipitation_probability_max,windspeed_10m_max`
-      const r = await fetch(url)
-      if (!r.ok) throw new Error(`Weather API fout ${r.status}`)
-      const d = await r.json()
+      const url = `http://localhost:8000/api/weather?latitude=${lat}&longitude=${lng}`
 
-      const fullForecast: WeatherDay[] = d.daily.time.map((date: string, i: number) => ({
-        date,
-        minTemp: d.daily.temperature_2m_min[i],
-        maxTemp: d.daily.temperature_2m_max[i],
-        weatherCode: d.daily.weathercode[i],
-        weatherText: weatherCodeToText(d.daily.weathercode[i]),
-        precipProb: d.daily.precipitation_probability_max[i],
-        windspeedMax: d.daily.windspeed_10m_max[i],
-      }))
+      const r = await fetch(url, {
+        method: 'GET',
+        headers: {
+          'Accept': 'application/json', // Dwing Laravel om JSON-fouten te spugen
+          'Content-Type': 'application/json'
+        }
+      })
+      if (!r.ok) {
+        const errData = await r.json().catch(() => ({}))
+        throw new Error(errData.error || `Backend fout ${r.status}`)
+      }
+      
+      const backendData = await r.json()
 
-      // Skip today, start forecast from tomorrow
-      const forecast = fullForecast.slice(1, 4)
-
+      // Voeg de frontend-specifieke tekstvertalingen toe aan de opgeschoonde data
       weatherData.value = {
         current: {
-          temperature: d.current_weather.temperature,
-          weatherCode: d.current_weather.weathercode,
-          weatherText: weatherCodeToText(d.current_weather.weathercode),
-          windspeed: d.current_weather.windspeed,
-          winddirection: d.current_weather.winddirection,
-          rainChance: d.daily.precipitation_probability_max[0] ?? 0,
+          ...backendData.current,
+          weatherText: weatherCodeToText(backendData.current.weatherCode),
         },
-        forecast,
+        forecast: backendData.forecast.map((day: any) => ({
+          ...day,
+          weatherText: weatherCodeToText(day.weatherCode),
+        })),
       }
+
       return weatherData.value
     } catch (e) {
       error.value = e instanceof Error ? e.message : 'Onbekende fout'
@@ -122,5 +120,12 @@ export const useWeather = () => {
     }
   }
 
-  return { loading, error, weatherData, getWeatherForecast, weatherCodeToIcon, degreesToDirection }
+  return { 
+    loading, 
+    error, 
+    weatherData, 
+    getWeatherForecast, 
+    weatherCodeToIcon, 
+    degreesToDirection 
+  }
 }

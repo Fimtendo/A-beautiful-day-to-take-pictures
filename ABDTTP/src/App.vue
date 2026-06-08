@@ -1,4 +1,9 @@
-<!-- Root app layout and auth-aware navigation -->
+<!-- Root app layout and auth-aware navigation 
+to do:
+-re-introduce map-based selector
+-photo suggestion feature to give an idea for what kind of photo to take next (photo challenge)
+-seperate some of the controllers and models in the backend to make them more maintainable
+-->
 
 <script setup lang="ts">
 import { RouterView } from 'vue-router'
@@ -43,15 +48,15 @@ const handleChangeAccount = async () => {
   <div class="min-h-screen bg-[#ffffff] text-slate-950">
     <header class="bg-[#3b552d]/95 border-b border-[#a58b62] shadow-xl backdrop-blur-md">
       <div class="w-full mx-auto flex flex-col gap-4 px-6 py-4 md:flex-row md:items-center md:justify-between">
-        <div class="flex flex-col gap-2 xl:max-w-xl sm:max-w-3xl">
+        <div class="flex flex-col gap-2 px-5 xl:max-w-xl sm:max-w-3xl">
           <div class="inline-flex items-center gap-3 rounded-full bg-[#8f9c5b] px-4 py-2 shadow-xl shadow-[#2f351f]/20">
             <span class="text-lg font-semibold tracking-wide text-[#f6f0e6]">
-              <H4 class="inline-flex items-center pl-1">A</H4>
-              <H4 class="inline-flex items-center pl-2">B</H4>eautiful
-              <H4 class="inline-flex items-center pl-1">D</H4>ay
-              <H4 class="inline-flex items-center pl-1">T</H4>o
-              <H4 class="inline-flex items-center pl-1">T</H4>ake
-              <H4 class="inline-flex items-center pl-1">P</H4>ictures
+              A
+              Beautiful
+              Day
+              To
+              Take
+              Pictures
             </span>
           </div>
         </div>
@@ -92,7 +97,7 @@ const handleChangeAccount = async () => {
     </main>
 
     <footer class="bg-[#3b552d]/95 border-t border-[#a58b62] py-4 text-center text-sm text-[#f6f0e6]">
-      <p>Powered by <a href="https://supabase.com" target="_blank" class="underline">Supabase</a> for database & auth, <a href="https://open-meteo.com" target="_blank" class="underline">Open-Meteo</a> for weather data, and <a href="https://leafletjs.com" target="_blank" class="underline">Leaflet</a> for maps.</p>
+      <p>Powered by <a href="https://laravel.com" target="_blank" class="underline">Laravel API</a> for backend, <a href="https://open-meteo.com" target="_blank" class="underline">Open-Meteo</a> for weather data, and <a href="https://leafletjs.com" target="_blank" class="underline">Leaflet</a> for maps.</p>
     </footer>
   </div>
 </template>
