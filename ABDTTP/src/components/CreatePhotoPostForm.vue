@@ -145,7 +145,7 @@ const close = () => {
 
 const submitForm = async () => {
   if (!authStore.user || !imageFile.value || !selectedMarker.value) {
-    error.value = 'Please fill in all required fields.'
+    error.value = 'Vul alstublieft alle verplichte velden in.'
     return
   }
 
@@ -153,18 +153,15 @@ const submitForm = async () => {
   error.value = ''
 
   try {
-    const imageUrl = imagePreview.value || ''
+    const formData = new FormData()
 
-    const payload = {
-      marker_id: Number(selectedMarker.value.id),
-      marker_name: String(selectedMarker.value.name || ''),
-      lat: Number(selectedMarker.value.lat),
-      lng: Number(selectedMarker.value.lng),
-      image_url: imageUrl,
-      caption: caption.value,
-    }
-
-    await api.post('/photo-posts', payload)
+    formData.append('marker_id', selectedMarker.value.id.toString())
+    formData.append('marker_name', selectedMarker.value.name || '')
+    formData.append('lat', selectedMarker.value.lat.toString())
+    formData.append('lng', selectedMarker.value.lng.toString())
+    formData.append('caption', caption.value)
+    formData.append('image', imageFile.value)
+    await api.post('/photo-posts', formData)
 
     emit('saved')
     close()
@@ -174,6 +171,7 @@ const submitForm = async () => {
     loading.value = false
   }
 }
+
 </script>
 
 <style scoped>
