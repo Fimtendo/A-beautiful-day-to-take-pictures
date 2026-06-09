@@ -159,8 +159,6 @@ const applyFilters = () => {
 
     const popupContent = `<div class="marker-popup">
         <h6 style="margin: 0 0 8px 0">${m.name || 'Marker'}</h6>
-        ${m.description ? `<p style="margin: 0 0 8px 0; font-size: 14px">${m.description}</p>` : ''}
-        ${m.image_url ? `<img src="${m.image_url}" alt="Marker" style="width: 100%; height: auto; max-height: 200px; border-radius: 4px; margin-bottom: 8px">` : ''}
         <small style="color: #666">Lat: ${latText}, Lng: ${lngText}</small>
       </div>`
     const marker = mapMarkers.addMarker(lat, lng, popupContent, type, m.id)
