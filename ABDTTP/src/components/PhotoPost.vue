@@ -1,6 +1,6 @@
 <template>
   <div class="overflow-hidden rounded-4xl border border-[#d8c2a0] bg-[#f8f3e7] shadow-2xl shadow-slate-900/10 min-h-125 flex flex-col">
-    <img :src="post.image_url" :alt="post.caption" class="h-72 w-full object-cover hover:opacity-85 transition-opacity cursor-zoom-in" @click="openZoom" />
+    <img :src="post.display_image" :alt="post.caption" class="h-72 w-full object-cover hover:opacity-85 transition-opacity cursor-zoom-in" @click="openZoom" />
     <div class="flex flex-col gap-4 p-5 grow">
       <div class="flex items-start justify-between gap-4">
         <div>
@@ -54,7 +54,9 @@
     </div>
   </div>
 
-  <ImageZoomModal :is-open="zoomOpen" :image-url="post.image_url" :image-alt="post.caption" @close="zoomOpen = false" />
+
+<ImageZoomModal :is-open="zoomOpen" :image-url="post.display_image" :image-alt="post.caption" @close="zoomOpen = false"/>
+
 </template>
 
 <script setup lang="ts">

@@ -19,7 +19,7 @@ class CreateMarkersTable extends Migration
             $table->text('description')->nullable();
             $table->integer('type')->default(1);
             $table->string('popup')->nullable();
-            $table->string('image_path')->nullable();
+            $table->string('image_url')->nullable();
             $table->double('lat', 15, 8);
             $table->double('lng', 15, 8);
             $table->timestamps();
